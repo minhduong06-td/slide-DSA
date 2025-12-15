@@ -1,0 +1,1246 @@
+\documentclass[aspectratio=169]{beamer}
+\usetheme[theme=blue,logo=logowithtextvi]{HUST} 
+\DeclareUnicodeCharacter{221E}{\ensuremath{\infty}}
+
+\usepackage[T5]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{adjustbox}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{minted}
+
+\usetikzlibrary{positioning,calc,decorations.pathreplacing,trees}
+\definecolor{codeblue}{RGB}{0,90,200}   
+\definecolor{codegold}{RGB}{210,160,0}
+\definecolor{HUSTBlue}{RGB}{0,51,102}
+
+% ===== Sudoku grid with row/col indices + 3x3 block braces =====
+\newcommand{\SudokuIndexedGrid}[1][0.55]{%
+	\begin{tikzpicture}[x=#1cm,y=#1cm]
+		% --- thin grid ---
+		\draw[step=1, black!45, thin] (0,0) grid (9,9);
+		
+		% --- thick 3x3 separators (blue-ish) ---
+		\draw[very thick, HUSTBlue] (0,0) rectangle (9,9);
+		\foreach \k in {3,6} {
+			\draw[very thick, HUSTBlue] (\k,0) -- (\k,9);
+			\draw[very thick, HUSTBlue] (0,\k) -- (9,\k);
+		}
+		
+		% --- column indices 0..8 on top ---
+		\foreach \c in {0,...,8} {
+			\node[font=\small] at (\c+0.5, 9.35) {\c};
+		}
+		
+		% --- row indices 0..8 on left (0 at top) ---
+		\foreach \r in {0,...,8} {
+			\node[font=\small] at (-0.35, 8.5-\r) {\r};
+		}
+		
+		% --- braces for block columns (bottom): 0,1,2 ---
+		\draw[decorate, decoration={brace, amplitude=4pt, mirror}, HUSTRed, thick]
+		(0,-0.15) -- (3,-0.15) node[midway, yshift=-10pt, font=\large] {0};
+		\draw[decorate, decoration={brace, amplitude=4pt, mirror}, HUSTRed, thick]
+		(3,-0.15) -- (6,-0.15) node[midway, yshift=-10pt, font=\large] {1};
+		\draw[decorate, decoration={brace, amplitude=4pt, mirror}, HUSTRed, thick]
+		(6,-0.15) -- (9,-0.15) node[midway, yshift=-10pt, font=\large] {2};
+		
+		% --- braces for block rows (right): 0,1,2 (top to bottom) ---
+		\draw[decorate, decoration={brace, amplitude=4pt}, HUSTRed, thick]
+		(9.15,9) -- (9.15,6) node[midway, xshift=12pt, font=\large] {0};
+		\draw[decorate, decoration={brace, amplitude=4pt}, HUSTRed, thick]
+		(9.15,6) -- (9.15,3) node[midway, xshift=12pt, font=\large] {1};
+		\draw[decorate, decoration={brace, amplitude=4pt}, HUSTRed, thick]
+		(9.15,3) -- (9.15,0) node[midway, xshift=12pt, font=\large] {2};
+	\end{tikzpicture}%
+}
+
+
+% ===== Sudoku solution grid (shaded 3x3 blocks + numbers) =====
+\definecolor{SudokuShade}{gray}{0.85}
+\newcommand{\SudokuSolvedGrid}[2][0.55]{%
+	\begin{tikzpicture}[x=#1cm,y=#1cm]
+		% --- shade blocks where (blockRow + blockCol) even ---
+		\fill[SudokuShade] (0,6) rectangle (3,9); % top-left
+		\fill[SudokuShade] (6,6) rectangle (9,9); % top-right
+		\fill[SudokuShade] (3,3) rectangle (6,6); % center
+		\fill[SudokuShade] (0,0) rectangle (3,3); % bottom-left
+		\fill[SudokuShade] (6,0) rectangle (9,3); % bottom-right
+		
+		% --- grid lines ---
+		\draw[step=1, black, thin] (0,0) grid (9,9);
+		\draw[very thick] (0,0) rectangle (9,9);
+		\foreach \k in {3,6} {
+			\draw[very thick] (\k,0) -- (\k,9);
+			\draw[very thick] (0,\k) -- (9,\k);
+		}
+		
+		% --- numbers: #2 is a list of 9 rows, each row is 9 numbers ---
+		\foreach \row [count=\r from 0] in {#2} {
+			\foreach \val [count=\c from 0] in \row {
+				\node[font=\large\bfseries] at (\c+0.5, 8.5-\r) {\val};
+			}
+		}
+	\end{tikzpicture}%
+}
+
+% ===== Backtracking tree (vector, manual coordinates) =====
+\newcommand{\TryBacktrackingTree}[1][1.0]{%
+	\begin{tikzpicture}[
+		x=0.95cm, y=1.0cm, % <-- muốn "khít" ngang hơn: giảm x xuống 0.90cm, 0.85cm...
+		scale=#1, every node/.style={transform shape},
+		treenode/.style={
+			circle, fill=HUSTBlue, draw=black, line width=0.9pt,
+			minimum size=7mm, inner sep=0pt
+		},
+		edge/.style={draw=black, line width=0.9pt},
+		lab/.style={font=\small}
+		]
+		% ---- ROOT + level 1 ----
+		\node[treenode, label={[lab]above:Try(1)}] (r) at (0, 0) {};
+		\node[treenode, label={[lab]above left:Try(2)}] (A) at (-3.6, -1.6) {};
+		\node[treenode, label={[lab]above:Try(2)}]      (B) at (-0.4, -1.75) {};
+		\node[treenode, label={[lab]above:Try(2)}]      (C) at ( 3.9, -1.75) {};
+		
+		\draw[edge] (r)--(A);
+		\draw[edge] (r)--(B);
+		\draw[edge] (r)--(C);
+		
+		% Dấu "..." ở tầng 1 (giữa nhánh giữa và nhánh phải) như ảnh
+		\node[lab] at (1.55, -2.05) {$\cdots$};
+		
+		% ---- Left subtree (A) ----
+		\node[treenode, label={[lab]above left:Try(3)}]  (A1) at (-5.0, -3.2) {};
+		\node[treenode, label={[lab]above right:Try(3)}] (A2) at (-2.4, -3.2) {};
+		\draw[edge] (A)--(A1);
+		\draw[edge] (A)--(A2);
+		
+		\node[treenode] (A11) at (-5.7, -5.4) {};
+		\node[treenode] (A12) at (-4.3, -5.4) {};
+		\draw[edge] (A1)--(A11);
+		\draw[edge] (A1)--(A12);
+		
+		% Dấu "..." ở vùng trống dưới-trái (như ảnh)
+		\node[lab] at (-2.05, -4.35) {$\cdots$};
+		
+		% ---- Middle subtree (B) ----
+		\node[treenode] (B1) at (-1.55, -3.45) {}; % lá trống như ảnh
+		\node[treenode, label={[lab]above:Try(3)}] (B2) at ( 0.95, -3.45) {};
+		\draw[edge] (B)--(B1);
+		\draw[edge] (B)--(B2);
+		
+		\node[treenode] (B21) at ( 0.10, -5.45) {};
+		\node[treenode] (B22) at ( 1.85, -5.45) {};
+		\draw[edge] (B2)--(B21);
+		\draw[edge] (B2)--(B22);
+		
+		% ---- Right subtree (C) ----
+		\node[treenode] (C1) at ( 2.65, -3.55) {};
+		\node[treenode] (C2) at ( 5.05, -3.55) {};
+		\draw[edge] (C)--(C1);
+		\draw[edge] (C)--(C2);
+		
+		% Dấu "..." giữa 2 lá bên phải như ảnh
+		\node[lab] at (3.85, -3.55) {$\cdots$};
+		
+	\end{tikzpicture}%
+}
+
+% ===== Binary string tree n=3 (SAFE macro: no tikzpicture environment) =====
+% ===== Binary string tree n=3 (vector TikZ) =====
+% (Edge: chỉ có nhãn 0/1 màu đỏ) ; (Try(k): nhãn node màu đen)
+\newcommand{\BinaryStringTreeNThree}[1][0.90]{%
+	{%
+		\centering
+		\scalebox{#1}{%
+			\begin{tikzpicture}[
+				grow=down,
+				level distance=16mm,
+				level 1/.style={sibling distance=78mm},
+				level 2/.style={sibling distance=46mm},
+				level 3/.style={sibling distance=20mm},
+				bstnode/.style={circle, draw=black, line width=0.8pt, fill=HUSTRed, minimum size=7mm, inner sep=0pt},
+				bstedge/.style={draw=HUSTRed, line width=2.0pt},
+				bstbit/.style={text=HUSTRed, font=\bfseries\Large},
+				bsttry/.style={text=black, font=\small},
+				bstpref/.style={text=black, font=\bfseries\Large},
+				bstleaf/.style={text=black, font=\bfseries\Large},
+				edge from parent/.style={bstedge}
+				]
+				
+				% --- structure (KHÔNG gắn nhãn Try lên edge) ---
+				\node[bstnode] (r) {}
+				child { node[bstnode] (n0) {}
+					child { node[bstnode] (n00) {}
+						child { node[bstnode] (n000) {} }
+						child { node[bstnode] (n001) {} }
+					}
+					child { node[bstnode] (n01) {}
+						child { node[bstnode] (n010) {} }
+						child { node[bstnode] (n011) {} }
+					}
+				}
+				child { node[bstnode] (n1) {}
+					child { node[bstnode] (n10) {}
+						child { node[bstnode] (n100) {} }
+						child { node[bstnode] (n101) {} }
+					}
+					child { node[bstnode] (n11) {}
+						child { node[bstnode] (n110) {} }
+						child { node[bstnode] (n111) {} }
+					}
+				};
+				
+				% --- Try labels (đặt gần node, tránh đè lên edge) ---
+				\node[bsttry, yshift=2.5mm] at (r.north) {Try(1)};
+				\node[bstpref, yshift=10mm] at (r.north) {()};
+				
+				\node[bsttry, xshift=6mm, yshift=2mm] at (n0.north) {Try(2)};
+				\node[bsttry, xshift=-6mm, yshift=2mm] at (n1.north) {Try(2)};
+				
+				\node[bsttry, xshift=6mm, yshift=2mm] at (n00.north) {Try(3)};
+				\node[bsttry, xshift=6mm, yshift=2mm] at (n01.north) {Try(3)};
+				\node[bsttry, xshift=6mm, yshift=2mm] at (n10.north) {Try(3)};
+				\node[bsttry, xshift=6mm, yshift=2mm] at (n11.north) {Try(3)};
+				
+				% --- prefix labels (0),(1),(00),(01),(10),(11) ---
+				\node[bstpref, xshift=-8mm, yshift=4mm] at (n0.north) {(0)};
+				\node[bstpref, xshift= 8mm, yshift=4mm] at (n1.north) {(1)};
+				
+				\node[bstpref, xshift=-18mm, yshift=2mm] at (n00.west) {(00)};
+				\node[bstpref, xshift= 18mm, yshift=2mm] at (n01.east) {(01)};
+				\node[bstpref, xshift=-20mm, yshift=2mm] at (n10.west) {(10)};
+				\node[bstpref, xshift= 15mm, yshift=2mm] at (n11.east) {(11)};
+				
+				% --- leaf labels ---
+				\node[bstleaf, yshift=-10mm] at (n000.south) {(000)};
+				\node[bstleaf, yshift=-10mm] at (n001.south) {(001)};
+				\node[bstleaf, yshift=-10mm] at (n010.south) {(010)};
+				\node[bstleaf, yshift=-10mm] at (n011.south) {(011)};
+				\node[bstleaf, yshift=-10mm] at (n100.south) {(100)};
+				\node[bstleaf, yshift=-10mm] at (n101.south) {(101)};
+				\node[bstleaf, yshift=-10mm] at (n110.south) {(110)};
+				\node[bstleaf, yshift=-10mm] at (n111.south) {(111)};
+				
+				% --- edge bit labels (0/1): đặt trên edge, gần phía trên như ảnh mẫu ---
+				\path (r)   -- (n0)  node[bstbit, midway, above] {0};
+				\path (r)   -- (n1)  node[bstbit, midway, above] {1};
+				
+				\path (n0)  -- (n00) node[bstbit, midway, above] {0};
+				\path (n0)  -- (n01) node[bstbit, midway, above] {1};
+				
+				\path (n1)  -- (n10) node[bstbit, midway, above] {0};
+				\path (n1)  -- (n11) node[bstbit, midway, above] {1};
+				
+				\path (n00) -- (n000) node[bstbit, midway, above] {0};
+				\path (n00) -- (n001) node[bstbit, midway, above] {1};
+				
+				\path (n01) -- (n010) node[bstbit, midway, above] {0};
+				\path (n01) -- (n011) node[bstbit, midway, above] {1};
+				
+				\path (n10) -- (n100) node[bstbit, midway, above] {0};
+				\path (n10) -- (n101) node[bstbit, midway, above] {1};
+				
+				\path (n11) -- (n110) node[bstbit, midway, above] {0};
+				\path (n11) -- (n111) node[bstbit, midway, above] {1};
+				
+			\end{tikzpicture}%
+		}%
+		\par
+	}%
+}
+
+
+
+
+
+
+
+
+
+\setminted{
+	breaklines=false,
+	autogobble=false,
+	obeytabs=true,
+	tabsize=2,
+	linenos=true,
+	showspaces=false,
+	space=~,
+	baselinestretch=1,
+	fontsize=\normalsize,
+	rulecolor=\color{black}
+}
+
+\newcommand{\placecontent}[4]{%
+  \tikz[remember picture,overlay]
+    \node[anchor=north west]
+      at ([xshift=#1,yshift=-#2]current page.north west)
+      {\parbox{#3}{#4}};
+}
+
+\graphicspath{{./week 3 resources/}}
+
+\title{\huge CẤU TRÚC DỮ LIỆU VÀ GIẢI THUẬT}
+\author{SoICT - HUST}
+\date{}
+
+\begin{document}
+
+% 2 slides đầu tiên:
+\HUSTInsertBrandSlide
+\HUSTInsertThemeSlide
+
+% Slide tiêu đề
+{\HUSTUseBackground{onelove.pdf}
+\begin{frame}
+  \ifdefstring{\insertaspectratio}{169}{
+    \HUSTCornerImage[0.14]{assets/logo/soict_vi_h.pdf}
+    \placecontent{0.5cm}{0.33\paperheight}{0.85\paperwidth}{
+        \color{\HUSTFrameTitleTextColor}\bfseries\fontsize{22pt}{30pt}\selectfont
+        \inserttitle
+    }
+    \placecontent{0.5cm}{0.50\paperheight}{0.8\paperwidth}{
+        \color{\HUSTFrameTitleTextColor}\fontsize{14pt}{14pt}\selectfont
+        %Bài học
+        \textbf{\large TUẦN 3: ĐỆ QUY QUAY LUI}\\
+    }
+  }{}
+\end{frame}
+}
+
+% Outline
+\AtBeginSection[]
+{
+    \begin{frame}<beamer>
+        \frametitle{NỘI DUNG}
+        \tableofcontents[currentsection]
+    \end{frame}
+}
+
+%Nội dung chính trong slides
+
+\section{Sơ đồ chung đệ quy quay lui}
+\begin{frame}[t]{SƠ ĐỒ CHUNG} 
+	\setlength{\leftmargini}{-1.2em}
+	
+	\begin{itemize}
+		\item Bài toán liệt kê tổ hợp: Liệt kê các bộ $x = (x[1], x[2], \dots, x[k], x[k+1], \dots, x[n])$ với $x[i] \in A_i$, $i = 1,2,\dots,n$ và thỏa mãn tập các ràng buộc $P$ cho trước.
+		\vspace*{0.5cm}
+		
+		\item Ví dụ:
+		\begin{itemize}
+			\item ``Bài toán liệt kê xâu nhị phân độ dài $n$'' dẫn về liệt kê các bộ $x = (x[1], x[2], \dots, x[k], x[k+1], \dots, x[n])$
+			với $x[i] \in \{0,1\}$, $i = 1,2,\dots,n$. 
+			\vspace*{0.5cm}
+			
+			\item ``Bài toán liệt kê xâu nhị phân độ dài $n$ \textit{có số lượng bit $0$ là một số chẵn}'' dẫn về liệt kê các bộ 
+			$x = (x[1], x[2], \dots, x[k], x[k+1], \dots, x[n])$ với $x[i] \in \{0,1\}$, $i = 1,2,\dots,n$ và thỏa mãn ràng buộc:
+			số lượng phần tử $x[i] = 0$ với $i = 1,2,\dots,n$ là một số chẵn.
+		\end{itemize}
+		\vspace*{0.5cm}
+		
+		\item Thuật toán quay lui cho phép giải các bài toán liệt kê tổ hợp.
+		Có hai cách cài đặt thuật toán quay lui: đệ quy hoặc không đệ quy.
+	\end{itemize}
+\end{frame}
+
+
+
+
+\begin{frame}[t,fragile]{SƠ ĐỒ CHUNG}
+	\small
+	\setlength{\leftmargini}{-1.2em}
+	
+	%=========== BULET ĐẦU: FULL WIDTH ===========
+	\begin{itemize}
+		\item Bài toán liệt kê tổ hợp: Liệt kê các bộ
+		$x = (x[1], x[2], \dots, x[k], x[k+1], \dots, x[n])$
+		với $x[i] \in A_i$, $i = 1, 2, \dots, n$ và thỏa mãn
+		tập các ràng buộc $P$ cho trước.
+	\end{itemize}
+	
+	\vspace{0.4em}
+	
+	%=========== PHẦN CÒN LẠI: CHIA 2 CỘT ===========
+	\begin{columns}[T,onlytextwidth]
+		
+		%----- Cột trái: các bullet còn lại -----
+		\begin{column}{0.47\textwidth}
+			\setlength{\leftmargini}{-1.2em}
+			\begin{itemize}
+				\item Lệnh gọi để thực hiện thuật toán đệ
+				quy quay lui là: {\color{HUSTRed}\texttt{Try(1);}}
+				
+				\item Nếu chỉ cần tìm một lời giải thì cần tìm cách
+				chấm dứt các thủ tục gọi đệ qui lồng nhau
+				sinh bởi lệnh gọi Try(1) sau khi ghi nhận
+				được lời giải đầu tiên.
+				
+				\item Nếu kết thúc thuật toán mà ta không thu được
+				một lời giải nào thì điều đó có nghĩa là bài
+				toán không có lời giải.
+			\end{itemize}
+		\end{column}
+		
+		%----- Cột phải: khung code Try(k) -----
+		\begin{column}{0.53\textwidth}
+			\vspace{0.4em} % chỉnh cho nó thẳng hàng đẹp
+			\centering
+			\begin{minipage}[t]{0.95\textwidth}
+				\begin{minted}[
+					fontsize=\scriptsize,
+					frame=single,
+					framesep=1mm,
+					numbers=none,
+					autogobble=true,
+					escapeinside=||,
+					baselinestretch=1.2,
+					formatcom=\color{HUSTBlue} 
+					]{text}
+					Try(k) {|{\textcolor{codegold}{// thử các giá trị có thể gán cho x[k]}}|
+						for v in candidates(k) do {
+							if (check(v,k)) then {
+								x[k] = v;
+								[Update the data structure D]
+								if (k == n) then solution();
+								else Try(k+1);
+								[Recover the data structure D]
+							}
+						}
+					}
+				\end{minted}
+			\end{minipage}
+		\end{column}
+	\end{columns}
+\end{frame}
+
+
+
+
+\begin{frame}[t,fragile]{SƠ ĐỒ CHUNG}
+	\small
+	\setlength{\leftmargini}{-1.2em}
+	
+	%=========== BULET ĐẦU: FULL WIDTH ===========
+	\begin{itemize}
+		\item Bài toán liệt kê tổ hợp: Liệt kê các bộ
+		$x = (x[1], x[2], \dots, x[k], x[k+1], \dots, x[n])$
+		với $x[i] \in A_i$, $i = 1, 2, \dots, n$ và thỏa mãn
+		tập các ràng buộc $P$ cho trước.
+	\end{itemize}
+	
+	\vspace{0.3em}
+	
+	%=========== PHẦN CÒN LẠI: CHIA 2 CỘT ===========
+	\begin{columns}[T,onlytextwidth]
+		
+		%----- Cột trái: bullet + hình cây -----
+		\begin{column}{0.47\textwidth}
+			\setlength{\leftmargini}{-1.2em}
+			\begin{itemize}
+				\item Lệnh gọi để thực hiện thuật toán đệ
+				quy quay lui là:
+				{\color{HUSTRed}\texttt{Try(1);}}
+			\end{itemize}
+			
+		
+			
+			\TryBacktrackingTree[0.55]  
+			 
+			
+		\end{column}
+		
+		%----- Cột phải: khung code Try(k) -----
+		\begin{column}{0.51\textwidth}
+			\vspace{1cm}
+			\centering
+			\begin{minipage}[t]{0.98\textwidth}
+				\begin{minted}[
+					fontsize=\scriptsize,
+					frame=single,
+					framesep=1mm,
+					numbers=none,
+					autogobble=true,
+					baselinestretch=1.1,
+					escapeinside=||,
+					formatcom=\color{HUSTBlue} % code màu xanh
+					]{text}
+					Try(k) {|{\textcolor{orange}{// thử các giá trị có thể gán cho x[k]}}|
+						for v in candidates(k) do {
+							if (check(v,k)) then {
+								x[k] = v;
+								[Update the data structure D]
+								if (k == n) then solution();
+								else Try(k+1);
+								[Recover the data structure D]
+							}
+						}
+					}
+				\end{minted}
+			\end{minipage}
+		\end{column}
+		
+	\end{columns}
+\end{frame}
+
+\section{Bài toán liệt kê xâu nhị phân}
+\begin{frame}[t]{BÀI TOÁN LIỆT KÊ XÂU NHỊ PHÂN}
+	\setlength{\leftmargini}{-1.2em}
+	
+	\begin{itemize}
+		\item Cho số nguyên dương $n \ge 1$. Hãy liệt kê tất cả các xâu nhị phân
+		độ dài $n$ theo thứ tự từ điển.
+		
+		\item Ví dụ: $n = 3$, ta có các xâu nhị phân độ dài $3$ cần liệt kê theo
+		thứ tự như sau:
+		\begin{itemize}
+			\item 000
+			\item 001
+			\item 010
+			\item 011
+			\item 100
+			\item 101
+			\item 110
+			\item 111
+		\end{itemize}
+	\end{itemize}
+\end{frame}
+
+
+\begin{frame}[t,fragile]{BÀI TOÁN LIỆT KÊ XÂU NHỊ PHÂN}
+	\small
+	\setlength{\leftmargini}{-1.2em}
+	
+	%============ PHẦN CHỮ (FULL WIDTH) ============
+	\begin{itemize}
+		\item Cho số nguyên dương $n \ge 1$. Hãy liệt kê tất cả các xâu nhị phân
+		độ dài $n$ theo thứ tự từ điển.
+		\item Biểu diễn lời giải: mỗi xâu nhị phân được biểu diễn bởi mảng
+		$x = (x[1], x[2], \ldots, x[n])$, trong đó $x[k] \in \{0,1\}$ là bít thứ
+		$k$ trong xâu nhị phân.
+	\end{itemize}
+	
+	\vspace{0.3cm}
+	
+	%===== HAI KHUNG CODE + CỘT CHỮ + MŨI TÊN =====
+	\begin{tikzpicture}
+		%--- Khung code bên trái (pseudo-code) ---
+		\node (L) [inner sep=0pt, anchor=north west] at (0,0)
+		{%
+			\begin{minipage}[t]{0.40\textwidth}
+				\begin{minted}[
+					fontsize=\tiny,
+					frame=single,
+					framesep=1mm,
+					xleftmargin=-20pt,
+					numbers=none,
+					autogobble=true,
+					baselinestretch=1.5,
+					escapeinside=|| % để chèn \color
+					]{text}
+					|{\color{codeblue}Try(k) \{}||{\color{codegold}// thử các giá trị có thể gán cho x[k]}|
+						|{\color{codeblue}    for v in candidates(k) do \{}|
+							|{\color{codeblue}        if (check(v,k)) then \{}|
+								|{\color{codeblue}            x[k] = v;}|
+								|{\color{codeblue}            [Update the data structure D]}|
+								|{\color{codeblue}            if (k == n) then solution();}|
+								|{\color{codeblue}            else Try(k+1); }|
+								|{\color{codeblue}            [Recover the data structure D]}|
+							|{\color{codeblue}        \}}|
+						|{\color{codeblue}    \}}|
+					|{\color{codeblue}\}}|
+				\end{minted}
+			\end{minipage}
+		};
+		
+		%--- Khung code bên phải: void Try(int k) ---
+		\node (Rtop) [inner sep=0pt, anchor=north east] at (\textwidth,0)
+		{%
+			\begin{minipage}[t]{0.40\textwidth}
+				\begin{minted}[
+					fontsize=\tiny,
+					frame=single,
+					framesep=1mm,
+					xrightmargin=-18pt,
+					baselinestretch=1.2,
+					numbers=none,
+					autogobble=true
+					]{c}
+					void Try(int k){
+						for (int v = 0; v <= 1; v++){
+							if (check(v,k)){
+								x[k] = v;
+								if (k == n) solution();
+								else Try(k + 1);
+							}
+						}
+					}
+				\end{minted}
+			\end{minipage}
+		};
+		
+		%--- Khung code bên phải phía dưới: int check(...) ---
+		\node (Rbot) [inner sep=0pt, anchor=north east]
+		at ([yshift=-0.1cm]Rtop.south east)
+		{%
+			\begin{minipage}[t]{0.40\textwidth}
+				\begin{minted}[
+					fontsize=\tiny,
+					frame=single,
+					framesep=1mm,
+					xrightmargin=-18pt,
+					numbers=none,
+					baselinestretch=1.5,
+					autogobble=true
+					]{c}
+					int check(int v, int k){
+						return 1;
+					}
+				\end{minted}
+			\end{minipage}
+		};
+		
+		%--- Mũi tên + chữ "Cần xác định" ---
+		\coordinate (Astart) at ([yshift=-0.2cm,xshift=0.1cm]L.east);
+		\coordinate (Aend)   at ([yshift=-0.87cm,xshift=-0.2cm]Rtop.west);
+		\draw[->] (Astart) -- (Aend);
+		
+		\node[anchor=south west] at ($(Astart)+(0.2,0.0)$)
+		{\scriptsize
+			\begin{tabular}{@{}l@{}}
+				Cần xác định: \\
+				\texttt{candidates(k)} \\
+				\texttt{check(v,k)}
+			\end{tabular}
+		};
+	\end{tikzpicture}
+\end{frame}
+
+
+
+\begin{frame}[t,fragile]{BÀI TOÁN LIỆT KÊ XÂU NHỊ PHÂN}
+	\small
+	
+	\begin{columns}[T,onlytextwidth]
+		%================= Cột trái: khung code =================
+		\begin{column}{0.32\textwidth}
+			\hspace*{-0.4cm}% dịch cả khung sang trái 0.3cm
+			\begin{minipage}[t]{\dimexpr\linewidth+0.3cm\relax}
+				\begin{minted}[
+					fontsize=\scriptsize,
+					frame=single,
+					framesep=1mm,
+					numbers=none,
+					autogobble=true,
+					baselinestretch=1.5,
+					formatcom=\color{HUSTBlue} % code màu xanh
+					]{c}
+					void Try(int k){
+						for (int v = 0; v <= 1; v++){
+							x[k] = v;
+							if (k == n) solution();
+							else Try(k + 1);
+						}
+					}
+				\end{minted}
+			\end{minipage}
+		\end{column}
+		
+		%================= Cột phải: tiêu đề + hình cây =================
+		\begin{column}{0.68\textwidth}
+			\centering
+			Cây liệt kê các xâu nhị phân độ dài 3
+			\vspace*{1.5cm}
+			\BinaryStringTreeNThree[0.59] 
+		\end{column}
+	\end{columns}
+\end{frame}
+
+\section{Bài toán liệt kê hoán vị}
+
+\begin{frame}[t]{BÀI TOÁN LIỆT KÊ HOÁN VỊ}
+	\setlength{\leftmargini}{-1.2em}
+	
+	\begin{itemize}
+		\item Cho số nguyên dương $n \ge 1$. Hãy liệt kê tất cả các hoán vị
+		của $n$ số $1, 2, \ldots, n$ theo thứ tự từ điển.
+		
+		\item Ví dụ: $n = 3$, ta có các hoán vị của $1, 2, 3$ theo thứ tự
+		từ điển như sau:
+		\begin{itemize}
+			\item $(1, 2, 3)$
+			\item $(1, 3, 2)$
+			\item $(2, 1, 3)$
+			\item $(2, 3, 1)$
+			\item $(3, 1, 2)$
+			\item $(3, 2, 1)$
+		\end{itemize}
+	\end{itemize}
+\end{frame}
+
+\begin{frame}[t,fragile]{BÀI TOÁN LIỆT KÊ HOÁN VỊ}
+	\small
+	\setlength{\leftmargini}{-1.2em}
+	
+	%================= PHẦN CHỮ (FULL WIDTH) =================
+	\begin{itemize}
+		\item Biểu diễn lời giải: mỗi hoán vị $n$ phần tử được biểu diễn bởi
+		mảng $x = (x[1], x[2], \ldots, x[n])$ trong đó:
+		\begin{itemize}
+			\item $x[k] \in \{1,2,\ldots,n\}$ là phần tử thứ $k$ trong hoán vị;
+			\item $x[k] \neq x[1], x[2], \ldots, x[k-1], x[k+1], \ldots, x[n]$.
+		\end{itemize}
+	\end{itemize}
+	
+	\vspace{0.3cm}
+	
+	%===== HAI KHUNG CODE + CỘT CHỮ + MŨI TÊN =====
+	\begin{tikzpicture}
+		%--- Khung code bên trái (pseudo-code) ---
+		\node (L) [inner sep=0pt, anchor=north west] at (0,0)
+		{%
+			\begin{minipage}[t]{0.40\textwidth}
+				\begin{minted}[
+					fontsize=\tiny,
+					frame=single,
+					framesep=1mm,
+					xleftmargin=-20pt,
+					numbers=none,
+					autogobble=true,
+					baselinestretch=1.3,
+					escapeinside=|| % để chèn \color
+					]{text}
+					|{\color{codeblue}try(k) \{}||{\color{codegold}// thử các giá trị có thể gán cho x[k]}|
+						|{\color{codeblue}    for v in candidates(k) do \{}|
+							|{\color{codeblue}        if (check(v,k)) then \{}|
+								|{\color{codeblue}            x[k] = v;}|
+								|{\color{codeblue}            [Update the data structure D]}|
+								|{\color{codeblue}            if (k == n) then solution();}|
+								|{\color{codeblue}            else try(k+1); }|
+								|{\color{codeblue}            [Recover the data structure D]}|
+							|{\color{codeblue}        \}}|
+						|{\color{codeblue}    \}}|
+					|{\color{codeblue}\}}|
+				\end{minted}
+			\end{minipage}
+		};
+		
+		%--- Khung code bên phải (C/C++) ---
+		\node (R) [inner sep=0pt, anchor=north east] at (\textwidth,0)
+		{%
+			\begin{minipage}[t]{0.40\textwidth}
+				\begin{minted}[
+					fontsize=\tiny,
+					frame=single,
+					framesep=1mm,
+					xrightmargin=7pt,
+					numbers=none,
+					autogobble=true,
+					escapeinside=||,
+					baselinestretch=1.5,
+					formatcom=\color{HUSTBlue}
+					]{c}
+					void Try(int k){
+						for (int v = 1; v <= n; v++){
+							|{\color{HUSTRed}        if (check(v, k)) \{}|
+							x[k] = v;
+							if (k == n) solution();
+							else Try(k + 1);
+						}
+					}
+				}
+			\end{minted}
+		\end{minipage}
+	};
+	
+	%--- Mũi tên + chữ "Cần xác định" ---
+	\coordinate (Astart) at ([yshift=-0.2cm,xshift=0.1cm]L.east);
+	\coordinate (Aend)   at ([yshift=-0.29cm,xshift=-0.2cm]R.west);
+	\draw[->] (Astart) -- (Aend);
+	
+	\node[anchor=south west] at ($(Astart)+(0.2,0.0)$)
+	{\scriptsize
+		\begin{tabular}{@{}l@{}}
+			Cần xác định: \\
+			\texttt{candidates(k)} \\
+			\texttt{check(v, k)}
+		\end{tabular}
+	};
+\end{tikzpicture}
+\end{frame}
+
+\begin{frame}[t,fragile]{BÀI TOÁN LIỆT KÊ HOÁN VỊ}
+	\small
+	\setlength{\columnsep}{0.1cm} % cứ để nhỏ
+	
+	\begin{columns}[T,onlytextwidth]
+		
+		%=========== Cột trái ===========
+		\begin{column}{0.40\textwidth}
+			\raggedright
+			% đẩy khung code vào giữa 1 chút
+			\hspace*{0.2\textwidth}%
+			\begin{minipage}[t]{\dimexpr\linewidth-0.05\textwidth\relax}
+				\begin{minted}[
+					fontsize=\scriptsize,
+					frame=single,
+					framesep=2mm,
+					xleftmargin=-10pt,
+					numbers=none,
+					autogobble=true,
+					escapeinside=||,
+					formatcom=\color{codeblue}
+					]{text}
+					#include <stdio.h>
+					int n;
+					int x[100];
+					
+					void solution(){
+						for (int k = 1; k <= n; k++)
+						printf("%d ", x[k]);
+						printf("\n");
+					}
+					
+					int check(int v, int k) {
+						for (int i = 1; i <= k-1; i++)
+						if (x[i] == v) return 0;
+						return 1;
+					}
+				\end{minted}
+			\end{minipage}
+		\end{column}
+		
+		%=========== Cột phải ===========
+		\begin{column}{0.40\textwidth}
+			\raggedright
+			% đẩy khung code vào giữa theo chiều ngược lại
+			\hspace*{-0.2\textwidth}%
+			\begin{minipage}[t]{\dimexpr\linewidth+0.05\textwidth\relax}
+				\begin{minted}[
+					fontsize=\scriptsize,
+					frame=single,
+					framesep=2mm,
+					xleftmargin=-10pt,
+					numbers=none,
+					autogobble=true,
+					escapeinside=||,
+					formatcom=\color{codeblue}
+					]{text}
+					void Try(int k){
+						for (int v = 1; v <= n; v++){
+							|{\color{HUSTRed}        if (check(v, k)) \{}|
+							x[k] = v;
+							if (k == n) solution();
+							else Try(k + 1);
+						}
+					}
+				}
+				
+				int main(){
+					scanf("%d", &n);
+					Try(1);
+				}
+			\end{minted}
+		\end{minipage}
+	\end{column}
+	
+\end{columns}
+\end{frame}
+
+\begin{frame}[t,fragile]{BÀI TOÁN LIỆT KÊ HOÁN VỊ}
+	\small
+	\setlength{\leftmargini}{-1.2em}
+	
+	%================= PHẦN CHỮ TRÊN CÙNG =================
+	\begin{itemize}
+		\item Kỹ thuật đánh dấu
+		\begin{itemize}
+			\item \texttt{used[v] = 1}: v đã xuất hiện
+			\item \texttt{used[v] = 0}: v chưa xuất hiện
+		\end{itemize}
+	\end{itemize}
+	
+	\vspace{0.25cm}
+	
+	%================= HAI KHUNG CODE + MŨI TÊN =================
+	\centering
+	\begin{tikzpicture}
+		%--- Khung trái: pseudo-code với 2 ô viền đỏ ---
+		\node (L) [inner sep=0pt, anchor=north west] at (0,0)
+		{%
+			\begin{minipage}[t]{0.42\textwidth}
+				\begin{minted}[
+					fontsize=\tiny,
+					frame=single,
+					framesep=1mm,
+					xleftmargin=-18pt,
+					numbers=none,
+					autogobble=true,
+					escapeinside=||,
+					baselinestretch=1.5,
+					formatcom=\color{codeblue}
+					]{text}
+					try(k){|{\color{codegold}// thử các giá trị có thể gán cho x[k]}|
+						for v in candidates(k) do {
+							|{\fcolorbox{red}{white}{\ttfamily\color{red}if (check(v,k)) then \{}}|
+							x[k] = v;
+							[Update the data structure D]
+							|{\fcolorbox{red}{white}{\ttfamily\color{red}if (k == n) then solution();}}|
+							else try(k+1);
+							[Recover the data structure D]
+						}
+					}
+				\end{minted}
+			\end{minipage}
+		};
+		
+		%--- Khung phải: code C với used[v] tô đỏ ---
+		\node (R) [inner sep=0pt, anchor=north east] at (\textwidth,0)
+		{%
+			\begin{minipage}[t]{0.42\textwidth}
+				\begin{minted}[
+					fontsize=\tiny,
+					frame=single,
+					framesep=1mm,
+					xrightmargin=1pt,
+					numbers=none,
+					autogobble=true,
+					escapeinside=||,
+					formatcom=\color{codeblue}
+					]{text}
+					void Try(int k){
+						for (int v = 1; v <= n; v++){
+							|{\color{HUSTRed}        if (used[v] == 0)\{}|
+							x[k] = v;
+							|{\color{HUSTRed}            used[v] = 1;}|
+							if (k == n) solution();
+							else Try(k + 1);
+							|{\color{HUSTRed}            used[v] = 0;}|
+						}
+					}
+				}
+				
+				int main(){
+					scanf("%d", &n);
+					for (int v = 1; v <= n; v++) used[v] = 0;
+					Try(1);
+				}
+			\end{minted}
+		\end{minipage}
+	};
+	
+	%--- Mũi tên nối hai khung ---
+	\coordinate (Astart) at ([yshift=-0.2cm,xshift=0.1cm]L.east);
+	\coordinate (Aend)   at ([yshift=-0.04cm,xshift=-0.1cm]R.west);
+	\draw[->] (Astart) -- (Aend);
+\end{tikzpicture}
+\end{frame}
+
+
+\begin{frame}[t,fragile]{BÀI TOÁN LIỆT KÊ HOÁN VỊ}
+	\small
+	\setlength{\columnsep}{0.1cm} % khoảng cách giữa 2 cột
+	
+	\begin{columns}[T,onlytextwidth]
+		
+		%=========== Cột trái ===========
+		\begin{column}{0.40\textwidth}
+			\raggedright
+			% đẩy khung code vào trong một chút
+			\hspace*{0.2\textwidth}%
+			\begin{minipage}[t]{\dimexpr\linewidth-0.05\textwidth\relax}
+				\begin{minted}[
+					fontsize=\scriptsize,
+					frame=single,
+					framesep=2mm,
+					xleftmargin=-10pt,
+					numbers=none,
+					autogobble=true,
+					baselinestretch=1.5,
+					formatcom=\color{HUSTBlue}
+					]{text}
+					#include <stdio.h>
+					int n;
+					int x[100];
+					int used[100];
+					
+					void solution(){
+						for (int k = 1; k <= n; k++)
+						printf("%d ", x[k]);
+						printf("\n");
+					}
+				\end{minted}
+			\end{minipage}
+		\end{column}
+		
+		%=========== Cột phải ===========
+		\begin{column}{0.45\textwidth}
+			\raggedright
+			% đẩy khung code vào trong theo chiều ngược lại
+			\hspace*{-0.1\textwidth}%
+			\begin{minipage}[t]{\dimexpr\linewidth+0.05\textwidth\relax}
+				\begin{minted}[
+					fontsize=\scriptsize,
+					frame=single,
+					framesep=2mm,
+					xleftmargin=-10pt,
+					numbers=none,
+					autogobble=true,
+					escapeinside=||,
+					formatcom=\color{HUSTBlue}
+					]{text}
+					void Try(int k){
+						for (int v = 1; v <= n; v++){
+							if (used[v] == 0){
+								x[k] = v;
+								|{\color{HUSTRed}       used[v] = 1;}|
+								
+								if (k == n) solution();
+								else Try(k + 1);
+								
+								|{\color{HUSTRed}       used[v] = 0;}|
+							}
+						}
+					}
+					
+					int main(){
+						scanf("%d", &n);
+						for (int v = 1; v <= n; v++) used[v] = 0;
+						Try(1);
+					}
+				\end{minted}
+			\end{minipage}
+		\end{column}
+		
+	\end{columns}
+\end{frame}
+
+\section{Bài toán điền số Sudoku}
+\begin{frame}[t]{BÀI TOÁN ĐIỀN SỐ SUDOKU}
+	\begin{columns}[T,onlytextwidth]
+		
+		%================= Cột trái: chữ =================
+		\begin{column}{0.52\textwidth}
+			\small
+			\setlength{\leftmargini}{-1.2em}
+			
+			\begin{itemize}
+				\item Phát biểu bài toán:
+				\begin{itemize}
+					\item Cho lưới ô vuông $9\times 9$ được chia thành
+					$9$ lưới $3\times 3$.
+					\item Các hàng, cột được đánh số $0, 1, 2, \ldots, 8$.
+					\item Liệt kê tất cả các cách điền các số $1,2,\ldots,9$
+					vào các ô thuộc lưới ô vuông $9\times 9$ sao cho:
+					\begin{itemize}
+						\item Các số trên mỗi dòng là khác nhau,
+						\item Các số trên mỗi cột là khác nhau,
+						\item Các số trên mỗi lưới $3\times 3$ là khác nhau.
+					\end{itemize}
+				\end{itemize}
+			\end{itemize}
+		\end{column}
+		
+		%================= Cột phải: hình =================
+		\begin{column}{0.48\textwidth}
+			\centering
+			\SudokuIndexedGrid[0.55]
+			
+		\end{column}
+		
+	\end{columns}
+\end{frame}
+
+\begin{frame}[t]{BÀI TOÁN ĐIỀN SỐ SUDOKU}
+	\begin{columns}[T,onlytextwidth]
+		
+		%================= Cột trái: chữ =================
+		\begin{column}{0.52\textwidth}
+			\small
+			\setlength{\leftmargini}{-1.2em}
+			
+			\begin{itemize}
+				\item Phát biểu bài toán:
+				\begin{itemize}
+					\item Cho lưới ô vuông $9\times 9$ được chia thành
+					$9$ lưới $3\times 3$.
+					\item Các hàng, cột được đánh số $0, 1, 2, \ldots, 8$.
+					\item Liệt kê tất cả các cách điền các số $1,2,\ldots,9$
+					vào các ô thuộc lưới ô vuông $9\times 9$ sao cho:
+					\begin{itemize}
+						\item Các số trên mỗi dòng là khác nhau,
+						\item Các số trên mỗi cột là khác nhau,
+						\item Các số trên mỗi lưới $3\times 3$ là khác nhau.
+					\end{itemize}
+				\end{itemize}
+			\end{itemize}
+		\end{column}
+		
+		%================= Cột phải: hình nghiệm Sudoku =================
+		\begin{column}{0.48\textwidth}
+			\centering
+			\SudokuSolvedGrid[0.55]{%
+				{1,2,3,4,5,6,7,8,9},
+				{4,5,6,7,8,9,1,2,3},
+				{7,8,9,1,2,3,4,5,6},
+				{2,1,4,3,6,5,8,9,7},
+				{3,6,5,8,9,7,2,1,4},
+				{8,9,7,2,1,4,3,6,5},
+				{5,3,1,6,4,2,9,7,8},
+				{6,4,2,9,7,8,5,3,1},
+				{9,7,8,5,3,1,6,4,2},
+			}
+			
+			
+		\end{column}
+	\end{columns}
+\end{frame}
+
+\begin{frame}[t]{BÀI TOÁN ĐIỀN SỐ SUDOKU}
+	\begin{columns}[T,onlytextwidth]
+		
+		%================= Cột trái: chữ =================
+		\begin{column}{0.58\textwidth}
+			\small
+			\setlength{\leftmargini}{-1.2em}
+			
+			\begin{itemize}
+				\item Biểu diễn lời giải: $X[i,j]$ là giá trị số được điền 
+				vào ô hàng $i$ cột $j$ ($i,j = 0,1,2,\ldots,8$).
+				
+				\item Mảng đánh dấu
+				\begin{itemize}
+					\item $\texttt{markR}[r,v] = 1$: giá trị $v$ đã xuất hiện trên hàng $r$,
+					$\texttt{markR}[r,v] = 0$ ngược lại ($r = 0,1,\ldots,8$; $v = 1,2,\ldots,9$).
+					
+					\item $\texttt{markC}[c,v] = 1$: giá trị $v$ đã xuất hiện trên cột $c$,
+					$\texttt{markC}[c,v] = 0$ ngược lại ($c = 0,1,\ldots,8$; $v = 1,2,\ldots,9$).
+					
+					\item $\texttt{markS}[i,j,v] = 1$: giá trị $v$ đã xuất hiện trong lưới $3\times 3$ hàng thứ $i$ và cột thứ $j$, 
+					$\texttt{markS}[i,j,v] = 0$ ngược lại ($i,j = 0,1,2$; $v = 1,2,\ldots,9$).
+				\end{itemize}
+			\end{itemize}
+		\end{column}
+		
+		%================= Cột phải: hình =================
+		\begin{column}{0.42\textwidth}
+			\centering
+			\SudokuSolvedGrid[0.55]{%
+				{1,2,3,4,5,6,7,8,9},
+				{4,5,6,7,8,9,1,2,3},
+				{7,8,9,1,2,3,4,5,6},
+				{2,1,4,3,6,5,8,9,7},
+				{3,6,5,8,9,7,2,1,4},
+				{8,9,7,2,1,4,3,6,5},
+				{5,3,1,6,4,2,9,7,8},
+				{6,4,2,9,7,8,5,3,1},
+				{9,7,8,5,3,1,6,4,2},
+			}
+		\end{column}
+		
+	\end{columns}
+\end{frame}
+
+\begin{frame}[t,fragile]{BÀI TOÁN ĐIỀN SỐ SUDOKU}
+	\small
+	\setlength{\leftmargini}{-1.2em}
+	
+	\begin{columns}[T,onlytextwidth]
+		%================= Cột trái: bullet + check(v,r,c) =================
+		\begin{column}{0.45\textwidth}
+			\setlength{\leftmargini}{-1.2em}
+			\begin{itemize}
+				\item Thứ tự duyệt các ô để thử giá trị:
+				từ trên xuống dưới và từ trái qua phải.
+				\item Hàm đệ quy \texttt{Try(r, c)}: thử giá trị
+				cho ô hàng \texttt{r} cột \texttt{c}.
+			\end{itemize}
+			
+			\vspace{0.2cm}
+			
+			\begin{minipage}[t]{\linewidth}
+				\begin{minted}[
+					fontsize=\scriptsize,
+					frame=single,
+					rulecolor=\color{black},
+					framesep=1mm,
+					xleftmargin=-10pt,
+					numbers=none,
+					autogobble=true,
+					baselinestretch=1.4
+					]{text}
+					check(v, r, c){
+						if markR[r,v] = 1 then return 0;
+						if markC[c,v] = 1 then return 0;
+						if markS[r/3,c/3,v] = 1 then return 0;
+						return 1;
+					}
+				\end{minted}
+			\end{minipage}
+		\end{column}
+		
+		%================= Cột phải: Try(r,c) =================
+		\begin{column}{0.45\textwidth}
+			\begin{minipage}[t]{\linewidth}
+				\begin{minted}[
+					fontsize=\scriptsize,
+					frame=single,
+					rulecolor=\color{black},
+					framesep=1mm,
+					xrightmargin=-10pt,
+					numbers=none,
+					autogobble=true,
+					baselinestretch=1.0
+					]{text}
+					Try(r, c){
+						for v = 1 to 9 do {
+							if (check(v,r,c)) then {
+								X[r,c] = v;
+								markR[r,v] = 1;
+								markC[c,v] = 1;
+								markS[r/3,c/3,v] = 1;
+								
+								if r = 8 and c = 8 then solution();
+								else {
+									if c = 8 then Try(r+1, 0);
+									else Try(r, c+1);
+								}
+								
+								markR[r,v] = 0;
+								markC[c,v] = 0;
+								markS[r/3,c/3,v] = 0;
+							}
+						}
+					}
+				\end{minted}
+			\end{minipage}
+		\end{column}
+	\end{columns}
+\end{frame}
+
+%Hết
+
+{\HUSTUseBackground{theme_hust_oneside.pdf}
+\begin{frame}
+  \ifdefstring{\insertaspectratio}{169}{
+    \placecontent{0.355\paperwidth}{0.410\paperheight}{0.640\paperwidth}{
+        \color{HUSTRed}\bfseries\fontsize{28pt}{36pt}\selectfont\centering
+        THANK YOU!
+    }
+  }{}
+  \ifdefstring{\insertaspectratio}{43}{
+    \placecontent{0.355\paperwidth}{0.440\paperheight}{0.640\paperwidth}{
+        \color{HUSTRed}\bfseries\fontsize{28pt}{36pt}\selectfont\centering
+        THANK YOU!
+    }
+  }{}
+\end{frame}
+}
+
+
+
+\end{document}
